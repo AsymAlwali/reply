@@ -68,15 +68,16 @@ def handle_chat(args):
                 break
                 
             print(f"🤖 {handle} is thinking...")
-            
-            # Pack previous context directly into the turn-by-turn instruction stream
             current_context = f"{chat_history}\nUser: {user_input}" if chat_history else f"User: {user_input}"
             
             response = engine.call_native_api(config, system_prompt, current_context)
             
+            # Intercept and process local file tools right during your active chat session!
+            tool_feedback = engine.execute_file_tools(response)
+            if tool_feedback:
+                response += f"\n\n{tool_feedback}"
+                
             print(f"\n🤖 {handle}:\n{response}")
-            
-            # Append context forward to maintain active chat memory thread bounds
             chat_history += f"\nUser: {user_input}\nAssistant: {response}"
             
         except KeyboardInterrupt:
@@ -105,14 +106,19 @@ def handle_thread(args):
         
         try:
             user_content = f"Task: {instruction.strip()}\n\nInput Context: {current_payload}"
-            current_payload = engine.call_native_api(config, system_prompt, user_content)
+            raw_response = engine.call_native_api(config, system_prompt, user_content)
+            
+            # Execute tool checks and pass the tool execution results to the next agent downstream
+            tool_feedback = engine.execute_file_tools(raw_response)
+            current_payload = raw_response + (f"\n\n{tool_feedback}" if tool_feedback else "")
+            
             print(f"✅ {handle} complete.")
         except Exception as e:
             print(f"❌ API Error: {e}")
             return
 
     print("\n" + "=" * 50)
-    print("🏁 Thread Complete! Final Output:")
+    print("🏁 Thread Complete! Final Context Pipeline Payload:")
     print(current_payload)
 
 def handle_list(args):
