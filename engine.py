@@ -38,6 +38,14 @@ def load_agent_prompt(handle: str) -> str:
             return json.load(f).get("system_prompt", "")
     return DEFAULT_PERSONAS.get(handle, f"You are {handle}. Be direct and efficient.")
 
+def save_agent_prompt(handle: str, prompt: str):
+    """Saves a custom agent's system prompt to the local storage."""
+    if not handle.startswith("@"):
+        handle = f"@{handle}"
+    agent_file = AGENTS_DIR / f"{handle[1:]}.json"
+    with open(agent_file, "w") as f:
+        json.dump({"handle": handle, "system_prompt": prompt}, f, indent=4)
+
 def make_request_with_retries(req, max_retries=5, backoff=2):
     """Executes a network request and retries if a temporary network drop happens."""
     for attempt in range(max_retries):
@@ -81,7 +89,7 @@ def call_native_api(config, system_prompt, user_content):
         res_data = make_request_with_retries(req)
         
         try:
-            return res_data["candidates"][0]["content"]["parts"][0]["text"]
+            return res_data["candidates"]["content"]["parts"]["text"]
         except (KeyError, IndexError):
             raise Exception(f"Unexpected response payload structure from Gemini backend: {json.dumps(res_data)}")
             
@@ -98,4 +106,4 @@ def call_native_api(config, system_prompt, user_content):
         
         req = urllib.request.Request(url, data=json.dumps(groq_payload).encode("utf-8"), headers=headers, method="POST")
         res_data = make_request_with_retries(req)
-        return res_data["choices"][0]["message"]["content"]
+        return res_data["choices"]["message"]["content"]
