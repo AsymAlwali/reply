@@ -37,17 +37,53 @@ def handle_build(args):
         name = f"@{name}"
         
     print(f"\n🧠 What is the main purpose/role of {name}?")
-    role = input("Describe role (e.g., Expert Python engineer who writes bug-free scripts): ").strip()
+    role = input("Describe role: ").strip()
     
     print(f"\n📝 Add specific rules or operational constraints for {name}:")
-    constraints = input("Constraints (e.g., Only return clean code blocks without conversational text): ").strip()
+    constraints = input("Constraints: ").strip()
     
-    # Compile the final system instructions cleanly
     system_prompt = f"You are {name}. Role: {role}. Instructions: {constraints} Be direct and efficient."
     
     engine.save_agent_prompt(name, system_prompt)
     print(f"\n✨ SUCCESS! {name} has been forged and saved to your local agent database.")
-    print("Type `./reply.py list` to view your team.")
+
+def handle_chat(args):
+    handle = args.name if args.name.startswith("@") else f"@{args.name}"
+    config = engine.get_config()
+    system_prompt = engine.load_agent_prompt(handle)
+    
+    print(f"💬 Opening live session with {handle} [{config['provider']}]")
+    print("Type 'exit' or 'quit' to close the room.")
+    print("=" * 50)
+    
+    chat_history = ""
+    
+    while True:
+        try:
+            user_input = input(f"\n✨ You: ").strip()
+            if not user_input:
+                continue
+            if user_input.lower() in ["exit", "quit"]:
+                print(f"👋 Closing chat session with {handle}. Room destroyed.")
+                break
+                
+            print(f"🤖 {handle} is thinking...")
+            
+            # Pack previous context directly into the turn-by-turn instruction stream
+            current_context = f"{chat_history}\nUser: {user_input}" if chat_history else f"User: {user_input}"
+            
+            response = engine.call_native_api(config, system_prompt, current_context)
+            
+            print(f"\n🤖 {handle}:\n{response}")
+            
+            # Append context forward to maintain active chat memory thread bounds
+            chat_history += f"\nUser: {user_input}\nAssistant: {response}"
+            
+        except KeyboardInterrupt:
+            print(f"\n👋 Session interrupted. Goodbye!")
+            break
+        except Exception as e:
+            print(f"❌ Error: {e}")
 
 def handle_thread(args):
     config = engine.get_config()
@@ -82,16 +118,12 @@ def handle_thread(args):
 def handle_list(args):
     print("🤖 Active Local Agents:")
     print("-" * 40)
-    
-    # List core default agents
-    for handle, prompt in engine.DEFAULT_PERSONAS.items():
-        print(f" ⚙️  {handle:<15} [Core Built-in]")
-        
-    # Read custom forged agents from your disk directory
+    all_handles = set(engine.DEFAULT_PERSONAS.keys())
     for f in engine.AGENTS_DIR.glob("*.json"):
-        handle = f"@{f.stem}"
-        if handle not in engine.DEFAULT_PERSONAS:
-            print(f" 🦖 {handle:<15} [Forged Custom Local]")
+        all_handles.add(f"@{f.stem}")
+    for handle in sorted(all_handles):
+        status = "Custom Local" if (engine.AGENTS_DIR / f"{handle[1:]}.json").exists() else "Core Built-in"
+        print(f" 🦖 {handle:<15} [{status}]")
 
 def main():
     parser = argparse.ArgumentParser(description="reply: Plug-and-play agent creation CLI.")
@@ -100,6 +132,9 @@ def main():
     subparsers.add_parser("setup", help="Configure provider and API keys interactively.")
     subparsers.add_parser("build", help="Launch the interactive local agent builder wizard.")
     subparsers.add_parser("list", help="List all available agent personas.")
+    
+    parser_chat = subparsers.add_parser("chat", help="Open a live 1-on-1 dialogue session with an agent.")
+    parser_chat.add_argument("name", type=str, help="The @handle of the target agent")
     
     parser_thread = subparsers.add_parser("thread", help="Run multi-agent text thread pipeline.")
     parser_thread.add_argument("pipeline", type=str, help="The complete X-style thread string")
@@ -112,6 +147,8 @@ def main():
         handle_build(args)
     elif args.command == "list":
         handle_list(args)
+    elif args.command == "chat":
+        handle_chat(args)
     elif args.command == "thread":
         handle_thread(args)
 
